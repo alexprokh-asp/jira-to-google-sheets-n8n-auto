@@ -1,6 +1,7 @@
 # Jira to Google Sheets AI-Powered Sync System (n8n + OpenAI)
 
-🎥 **Demo Video:** [Смотреть демо](https://drive.google.com/file/d/11oUJQ0CylXdoS_gFuKGbYUOKk5cT2aGr/view?usp=drive_link)
+🎥 **Demo:** 
+![Architecture](doc/workflow.jpg)
 
 ---
 
