@@ -70,7 +70,6 @@ By leveraging the **Loop Over Items** node, the workflow processes bugs one-by-o
 A dedicated JavaScript node safely strips any Markdown formatting from the AI Agent response, handling potential JSON failures gracefully:
 
 ```javascript
-// Очистка сырого ответа от LLM и парсинг JSON
 aiRaw = aiRaw.replace(/```json|```/gi, '').trim();
 parsedAi = JSON.parse(aiRaw);
 ```
