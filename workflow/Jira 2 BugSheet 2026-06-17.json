@@ -1,0 +1,431 @@
+{
+  "name": "Jira 2 BugSheet",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 100,
+        "options": {
+          "jql": "project = \"CRM\" AND issuetype = \"Bug\" AND updated >= \"-2h\""
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        272,
+        -112
+      ],
+      "id": "00d9a236-ffd5-47a3-a510-630a6184d67c",
+      "name": "Get many issues",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "kQsxSFP5f18LCMTf",
+          "name": "Jira SW EMDUA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        800,
+        32
+      ],
+      "id": "3c52d801-07a4-497c-b3fe-0c8adecbac6e",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "LOTYjxQwBxYcI1nF",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        112,
+        -112
+      ],
+      "id": "b2c2a511-189e-4efb-bc46-a6e3f64493dd",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "let item = $input.item; // Берем строго один текущий элемент цикла\nlet aiRaw = item.json.output || item.json.text || \"\";\nlet parsedAi = { description: \"\", type: \"\", area: \"\" };\n\nif (aiRaw) {\n  try {\n    aiRaw = aiRaw.replace(/```json|```/gi, '').trim();\n    parsedAi = JSON.parse(aiRaw);\n  } catch (e) {\n    parsedAi.description = aiRaw;\n  }\n}\n\nconst fields = item.json.fields || (item.json.input ? item.json.input.fields : {});\nconst issueKey = item.json.key || (item.json.input ? item.json.input.key : \"\");\nconst fallbackArea = fields.fixVersions && fields.fixVersions.length > 0 ? fields.fixVersions[0].name : \"\";\n\n// ДОСТАЕМ SEVERITY: проверяем, есть ли поле customfield_10172 и берем оттуда value\nconst severityValue = fields.customfield_10172 ? fields.customfield_10172.value : \"\";\n\nreturn {\n  json: {\n    \"Number\": issueKey,\n    \"Date\": fields.created ? fields.created.substring(0, 10) : \"\",\n    \"Area\": parsedAi.area || fallbackArea,\n    \"Bugs Name\": fields.summary || \"\",\n    \"Desctiption\": parsedAi.description || fields.summary,\n    \"Type\": parsedAi.type || \"Functional\",\n    \"Prioriy\": fields.priority ? fields.priority.name : \"\",\n    \"Severity\": severityValue, // Сюда теперь прилетит \"Major\"\n    \"State\": fields.status ? fields.status.name : \"\",\n    \"Assign\": fields.assignee ? fields.assignee.displayName : \"Unassigned\",\n    \"Jira Ticket\": `https://your-domain.atlassian.net/browse/${issueKey}`,\n    \"Start Date\": \"\",\n    \"Finish Date\": fields.resolutiondate ? fields.resolutiondate.substring(0, 10) : \"\",\n    \"Notes\": \"\"\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        -112
+      ],
+      "id": "1a3e5c66-0842-491f-be56-59321c32755f",
+      "name": "Jira JSON 2 MyFields"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map((item) => {\n  let aiRaw = item.json.output || item.json.text || \"\";\n  \n  let parsedAi = { description: \"\", type: \"\", area: \"\" };\n  \n  if (aiRaw) {\n    try {\n      // Очищаем от возможных markdown тегов ```json ... ```\n      aiRaw = aiRaw.replace(/```json|```/gi, '').trim();\n      \n      // Превращаем текст в объект\n      parsedAi = JSON.parse(aiRaw);\n    } catch (e) {\n      // Если ИИ выдал просто текст, сохраняем его в описание\n      parsedAi.description = aiRaw;\n    }\n  }\n\n  // Возвращаем исходный объект, но ДОБАВЛЯЕМ в него чистые поля ai_fields\n  return {\n    json: {\n      ...item.json,\n      ai_fields: {\n        description: parsedAi.description || \"\",\n        type: parsedAi.type || \"\",\n        area: parsedAi.area || \"\"\n      }\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        -112
+      ],
+      "id": "60b050dc-94e8-48e4-8658-49513bc47aed",
+      "name": "Extract Add. Fields"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "cachedResultUrl",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1960884671,
+          "mode": "list",
+          "cachedResultName": "Bugs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/cachedResultUrl/edit#gid=1960884671"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Number": "={{ $('Jira JSON 2 MyFields').item.json.Number }}",
+            "Date": "={{ $('Jira JSON 2 MyFields').item.json.Date }}",
+            "Bugs Name": "={{ $('Jira JSON 2 MyFields').item.json['Bugs Name'] }}",
+            "Desctiption": "={{ $json.ai_fields.description }}",
+            "Prioriy": "={{ $('Jira JSON 2 MyFields').item.json.Prioriy }}",
+            "Severity": "={{ $('Jira JSON 2 MyFields').item.json.Severity }}",
+            "Assign": "={{ $('Jira JSON 2 MyFields').item.json.Assign }}",
+            "Jira Ticket": "=https://your-domain.atlassian.net/browse/{{ $('Jira JSON 2 MyFields').item.json.Number }}",
+            "Start Date": "={{ $('Jira JSON 2 MyFields').item.json.Date }}",
+            "Finish Date": "={{ $('Jira JSON 2 MyFields').item.json['Finish Date'] }}",
+            "Notes": "={{ $('Jira JSON 2 MyFields').item.json.Notes }}",
+            "Area": "={{ $json.ai_fields.area }}",
+            "Type": "={{ $json.ai_fields.type }}",
+            "State": "={{ $('Jira JSON 2 MyFields').item.json.State }}"
+          },
+          "matchingColumns": [
+            "Number"
+          ],
+          "schema": [
+            {
+              "id": "Number",
+              "displayName": "Number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Area",
+              "displayName": "Area",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Bugs Name",
+              "displayName": "Bugs Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Desctiption",
+              "displayName": "Desctiption",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Type",
+              "displayName": "Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Prioriy",
+              "displayName": "Prioriy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Severity",
+              "displayName": "Severity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "State",
+              "displayName": "State",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Assign",
+              "displayName": "Assign",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Jira Ticket",
+              "displayName": "Jira Ticket",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Start Date",
+              "displayName": "Start Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Finish Date",
+              "displayName": "Finish Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Notes",
+              "displayName": "Notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1248,
+        -112
+      ],
+      "id": "c9dbd261-9b77-43e7-8577-96b3d25eef8c",
+      "name": "Edit Bugs Table",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "h59G151EeAqUvM4A",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an expert QA Lead. Your task is to analyze a Jira bug report and extract/generate three specific fields for a summary report: Description, Type, and Area.\n\nAnalyze the following inputs:\n- Summary (Title): {{ $json['Bugs Name'] }}\n- Description (Raw): {{ $json.Desctiption }}\n\nStrictly follow these rules for extraction:\n1. \"Description\": Rewrite the raw description into a single, clear, and professional paragraph (3-4 sentences max). Focus only on the core issue. Remove logs, steps, and clutter.\n2. \"Type\": Classify the bug category. Choose strictly from: \"Functional\", \"UI/UX\", \"Performance\", or \"Security\". (e.g., if it's a layout/text issue -> \"UI/UX\", if it's a broken feature/calculation -> \"Functional\").\n3. \"Area\": Identify where the bug occurs. Look at the Summary first — if there is a module name in brackets at the beginning (like \"[Deals]\" or \"[Agents]\"), extract that word without brackets. If there are no brackets, analyze the context and specify the system module name (e.g., \"Viewing event\", \"Client form\", \"Analytics\").\n\nOutput MUST be strictly in English and formatted as a raw JSON object with keys \"description\", \"type\", and \"area\". Do not include any markdown formatting like ```json.\n\nExample output format:\n{\n  \"description\": \"When creating a new Viewing event, the user cannot interact with the modal form because clicks trigger elements behind it.\",\n  \"type\": \"Functional\",\n  \"area\": \"Viewing event\"\n}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        800,
+        -112
+      ],
+      "id": "ffb4ab55-e6d1-4ff4-b0b7-74b8b94422c9",
+      "name": "Extract Descr. and add. fields"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        448,
+        -112
+      ],
+      "id": "37e6bd59-687f-4800-9d52-7a9882c7e1ae",
+      "name": "Start Loop"
+    },
+    {
+      "parameters": {
+        "content": "## Jira to Google Sheets Auto Synchronization",
+        "height": 368,
+        "width": 1520
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        0,
+        -192
+      ],
+      "typeVersion": 1,
+      "id": "f15c65b0-b73b-4c2a-8953-f1c5943cb9ef",
+      "name": "Sticky Note"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Get many issues": {
+      "main": [
+        [
+          {
+            "node": "Start Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extract Descr. and add. fields",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many issues",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jira JSON 2 MyFields": {
+      "main": [
+        [
+          {
+            "node": "Extract Descr. and add. fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Add. Fields": {
+      "main": [
+        [
+          {
+            "node": "Edit Bugs Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Bugs Table": {
+      "main": [
+        [
+          {
+            "node": "Start Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Descr. and add. fields": {
+      "main": [
+        [
+          {
+            "node": "Extract Add. Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Loop": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Jira JSON 2 MyFields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "c5d608a6-4bea-42db-a403-b2fd1686479b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": ""
+  },
+  "id": "",
+  "tags": []
+}
